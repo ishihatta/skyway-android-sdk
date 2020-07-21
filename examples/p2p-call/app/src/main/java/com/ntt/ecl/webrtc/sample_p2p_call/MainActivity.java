@@ -79,8 +79,79 @@ public class MainActivity extends Activity {
 		setContentView(R.layout.activity_main);
 
 		_handler = new Handler(Looper.getMainLooper());
-		final Activity activity = this;
 		_callState = CallState.TERMINATED;
+		updateActionButtonTitle();
+
+		//
+		// Set GUI event listeners
+		//
+
+		Button btnAction = (Button) findViewById(R.id.btnAction);
+		btnAction.setEnabled(true);
+		btnAction.setOnClickListener(new View.OnClickListener()	{
+			@Override
+			public void onClick(View v)	{
+				v.setEnabled(false);
+
+				if (_peer == null) {
+					createPeer();
+					updateActionButtonTitle();
+				}
+				else if (CallState.TERMINATED == _callState) {
+
+					// Select remote peer & make a call
+					showPeerIDs();
+				}
+				else if (CallState.CALLING == _callState) {
+
+					// Cancel a call
+					if(null != _signalingChannel) {
+						_signalingChannel.send("cancel");
+					}
+					_callState = CallState.TERMINATED;
+					updateActionButtonTitle();
+
+				}
+				else {
+
+					// Hang up a call
+					closeRemoteStream();
+					_mediaConnection.close();
+					_signalingChannel.close();
+					destroyPeer();
+					_callState = CallState.TERMINATED;
+					updateActionButtonTitle();
+
+				}
+
+				v.setEnabled(true);
+			}
+		});
+
+		Button switchCameraAction = (Button)findViewById(R.id.switchCameraAction);
+		switchCameraAction.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v)	{
+				if(null != _localStream){
+					Boolean result = _localStream.switchCamera();
+					if(true == result)	{
+						//Success
+					}
+					else {
+						//Failed
+					}
+				}
+
+			}
+		});
+
+	}
+
+	/**
+	 * Peer の作成
+	 */
+	private void createPeer() {
+		final Activity activity = this;
 
 		//
 		// Initialize Peer
@@ -167,66 +238,6 @@ public class MainActivity extends Activity {
 				Log.d(TAG, "[On/Error]" + error.getMessage());
 			}
 		});
-
-
-		//
-		// Set GUI event listeners
-		//
-
-		Button btnAction = (Button) findViewById(R.id.btnAction);
-		btnAction.setEnabled(true);
-		btnAction.setOnClickListener(new View.OnClickListener()	{
-			@Override
-			public void onClick(View v)	{
-				v.setEnabled(false);
-
-				if (CallState.TERMINATED == _callState) {
-
-					// Select remote peer & make a call
-					showPeerIDs();
-				}
-				else if (CallState.CALLING == _callState) {
-
-					// Cancel a call
-					if(null != _signalingChannel) {
-						_signalingChannel.send("cancel");
-					}
-					_callState = CallState.TERMINATED;
-					updateActionButtonTitle();
-
-				}
-				else {
-
-					// Hang up a call
-					closeRemoteStream();
-					_mediaConnection.close();
-					_signalingChannel.close();
-					_callState = CallState.TERMINATED;
-					updateActionButtonTitle();
-
-				}
-
-				v.setEnabled(true);
-			}
-		});
-
-		Button switchCameraAction = (Button)findViewById(R.id.switchCameraAction);
-		switchCameraAction.setOnClickListener(new View.OnClickListener() {
-			@Override
-			public void onClick(View v)	{
-				if(null != _localStream){
-					Boolean result = _localStream.switchCamera();
-					if(true == result)	{
-						//Success
-					}
-					else {
-						//Failed
-					}
-				}
-
-			}
-		});
-
 	}
 
     @Override
@@ -321,6 +332,7 @@ public class MainActivity extends Activity {
 			public void onCallback(Object object) {
 				closeRemoteStream();
 				_signalingChannel.close();
+				destroyPeer();
 				_callState = CallState.TERMINATED;
 				updateActionButtonTitle();
 			}
@@ -372,12 +384,14 @@ public class MainActivity extends Activity {
 					case "reject":
 						closeMediaConnection();
 						_signalingChannel.close();
+						destroyPeer();
 						_callState = CallState.TERMINATED;
 						updateActionButtonTitle();
 						break;
 					case "cancel":
 						closeMediaConnection();
 						_signalingChannel.close();
+						destroyPeer();
 						_callState = CallState.TERMINATED;
 						updateActionButtonTitle();
 						dismissIncomingCallDialog();
@@ -416,6 +430,9 @@ public class MainActivity extends Activity {
 
 			_peer = null;
 		}
+
+		TextView tvOwnId = (TextView) findViewById(R.id.tvOwnId);
+		tvOwnId.setText("");
 	}
 
 	//
@@ -570,7 +587,10 @@ public class MainActivity extends Activity {
 			public void run() {
 				Button btnAction = (Button) findViewById(R.id.btnAction);
 				if (null != btnAction) {
-					if (CallState.TERMINATED == _callState) {
+					if (_peer == null) {
+						btnAction.setText("Create Peer");
+					}
+					else if (CallState.TERMINATED == _callState) {
 						btnAction.setText("Make Call");
 					}
 					else if (CallState.CALLING == _callState) {
